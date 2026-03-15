@@ -2,16 +2,14 @@
 # config.toml is gitignored — each machine has its own.
 
 # Path to the yt-dlp binary
-# macOS example:  "~/dev/yt-dlp/yt-dlp"
-# WSL example:    "~/dev/yt-dlp/yt-dlp"
-ytdlp_path = "~/dev/yt-dlp/yt-dlp"
+# macOS example:  "~/dev/yt-dlp/yt-dlp.sh"
+ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 
 # File that tracks already-downloaded video IDs (shared across machines via Drive)
 archive_file = "~/path/to/archive.txt"
 
 # Directory where FLAC files are saved
 # macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
-# WSL example:    "/mnt/c/Users/you/Google Drive/Music"
 output_dir = "~/path/to/output"
 
 # Log file location (local to each machine)
