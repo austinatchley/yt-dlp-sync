@@ -67,6 +67,7 @@ def main() -> int:
         "-N", "4",
         "--quiet",
         "--no-warnings",
+        "--no-write-thumbnail",
         # only prints for newly downloaded files (after move to final location)
         "--print", "after_move:Downloaded: %(title)s - %(artist,uploader)s",
         "-o", str(output_dir / "%(title)s - %(artist,uploader)s.%(ext)s"),
