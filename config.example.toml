@@ -1,0 +1,25 @@
+# Copy this file to config.toml and fill in your values.
+# config.toml is gitignored — each machine has its own.
+
+# Path to the yt-dlp binary
+# macOS example:  "~/dev/yt-dlp/yt-dlp"
+# WSL example:    "~/dev/yt-dlp/yt-dlp"
+ytdlp_path = "~/dev/yt-dlp/yt-dlp"
+
+# File that tracks already-downloaded video IDs (shared across machines via Drive)
+archive_file = "~/path/to/archive.txt"
+
+# Directory where FLAC files are saved
+# macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
+# WSL example:    "/mnt/c/Users/you/Google Drive/Music"
+output_dir = "~/path/to/output"
+
+# Log file location (local to each machine)
+log_file = "~/path/to/sync.log"
+
+# YouTube Music playlist URL
+playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+
+# ntfy.sh topic — pick something unique and keep it private
+# Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app
+ntfy_topic = "your-unique-topic-name"
