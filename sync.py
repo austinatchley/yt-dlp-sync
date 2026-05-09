@@ -4,21 +4,14 @@ import logging.handlers
 import subprocess
 import sys
 import urllib.request
+from typing import Any
 from pathlib import Path
-
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib  # pip install tomli for Python < 3.11
-    except ImportError:
-        print("Error: requires Python 3.11+ or 'pip install tomli'", file=sys.stderr)
-        sys.exit(1)
+import tomllib
 
 CONFIG_PATH = Path(__file__).parent / "config.toml"
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
@@ -55,7 +48,7 @@ def main() -> int:
     output_dir = Path(config["output_dir"]).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
+    cmd: list[str] = [
         str(Path(config["ytdlp_path"]).expanduser()),
         "--extract-audio",
         "--audio-format", "flac",
