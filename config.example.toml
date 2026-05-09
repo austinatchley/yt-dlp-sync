@@ -5,15 +5,9 @@
 # macOS example:  "~/dev/yt-dlp/yt-dlp.sh"
 ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 
-# File that tracks already-downloaded video IDs (shared across machines via Drive)
-archive_file = "~/path/to/archive.txt"
-
 # Directory where FLAC files are saved
 # macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
 output_dir = "~/path/to/output"
-
-# Log file location (local to each machine)
-log_file = "~/path/to/sync.log"
 
 # YouTube Music playlist URL
 playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"

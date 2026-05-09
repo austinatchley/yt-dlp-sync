@@ -27,10 +27,13 @@ def send_ntfy(topic: str, title: str, message: str, priority: str = "default") -
 
 
 def main() -> int:
-    config = load_config()
+    config = load_config() 
 
-    log_path = Path(config["log_file"]).expanduser()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(config["output_dir"]).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    log_path = str(output_dir / "log.txt")
+    archive_path = str(output_dir / "archive.txt")
 
     logging.basicConfig(
         level=logging.INFO,
@@ -45,9 +48,6 @@ def main() -> int:
 
     logging.info("=== sync started ===")
 
-    output_dir = Path(config["output_dir"]).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     cmd: list[str] = [
         str(Path(config["ytdlp_path"]).expanduser()),
         "--extract-audio",
@@ -56,7 +56,7 @@ def main() -> int:
         "--convert-thumbnails", "jpg",
         "--add-metadata",
         "--yes-playlist",
-        "--download-archive", str(Path(config["archive_file"]).expanduser()),
+        "--download-archive", archive_path,
         "-N", "4",
         "--quiet",
         "--no-warnings",
@@ -81,7 +81,7 @@ def main() -> int:
             send_ntfy(
                 config["ntfy_topic"],
                 title="yt-dlp-sync failed",
-                message=f"Exit code {result.returncode}. Check {config['log_file']} for details.",
+                message=f"Exit code {result.returncode}. Check {log_path} for details.",
                 priority="high",
             )
         except Exception as exc:

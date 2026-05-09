@@ -20,10 +20,7 @@ The archive file is designed to live on a shared cloud drive (e.g., Google Drive
 
 ## Prerequisites
 
-- **Python 3.11+** — uses the built-in `tomllib` module. On Python < 3.11, install `tomli` instead:
-  ```sh
-  pip install tomli
-  ```
+- **Python 3.11+** — uses the built-in `tomllib` module. 
 - **yt-dlp** — see [installation options](#yt-dlp-installation) below
 - **ffmpeg** — required by yt-dlp for audio extraction, FLAC conversion, and thumbnail embedding
 
@@ -58,9 +55,7 @@ All configuration lives in `config.toml` (gitignored — each machine has its ow
 | Key | Description |
 |---|---|
 | `ytdlp_path` | Path to the yt-dlp binary or wrapper script. Supports `~` expansion. See [yt-dlp installation](#yt-dlp-installation). |
-| `archive_file` | Path to the yt-dlp download archive file. Tracks already-downloaded video IDs so re-runs are incremental. Keep this on a shared drive (e.g., Google Drive) to sync state across machines. |
 | `output_dir` | Directory where downloaded FLAC files are saved. Created automatically if it doesn't exist. |
-| `log_file` | Path to the rotating log file (local to each machine). Rotates at 1 MB, keeps 5 backups. |
 | `playlist_url` | The YouTube or YouTube Music playlist URL to sync. |
 | `ntfy_topic` | Your [ntfy.sh](https://ntfy.sh) topic name for failure notifications. Pick something unique and keep it private. |
 
@@ -68,9 +63,7 @@ Example `config.toml`:
 
 ```toml
 ytdlp_path   = "~/dev/yt-dlp/yt-dlp.sh"
-archive_file = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/yt-dlp-archive.txt"
 output_dir   = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
-log_file     = "~/.local/log/yt-dlp-sync/sync.log"
 playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
 ntfy_topic   = "your-unique-topic-name"
 ```
@@ -263,7 +256,7 @@ The notification is sent over plain HTTPS using Python's standard library (`urll
 
 ## Logging
 
-Logs are written to both stdout and the `log_file` path configured in `config.toml`. The log file rotates automatically at 1 MB and keeps the last 5 rotated files.
+Logs are written to both stdout and the log.txt file in the output directory. The log file rotates automatically at 1 MB and keeps the last 5 rotated files.
 
 Log format:
 ```
