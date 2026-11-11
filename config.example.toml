@@ -5,20 +5,36 @@
 # macOS example:  "~/dev/yt-dlp/yt-dlp.sh"
 ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 
-# Directory where FLAC files are saved
+# Root directory for downloads. Each playlist gets its own subdirectory here.
 # macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
 output_dir = "~/path/to/output"
 
-# YouTube / YouTube Music playlist URLs — synced in order.
-# The legacy single `playlist_url` key is still supported.
-playlist_urls = [
-    "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
-]
+# Playlists to sync. Each entry creates a subdirectory named `name` under
+# output_dir, with its own archive.txt and FLAC files.
+[[playlists]]
+name = "dj"
+url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+
+# Add more playlists as needed:
+# [[playlists]]
+# name = "nov14"
+# url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+
+# Optional: a plain list of URLs. Directory names are derived from the
+# playlist titles. The legacy single `playlist_url` key also still works.
+# playlist_urls = [
+#     "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
+# ]
+# playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
 
 # Optional: read cookies from a browser to reach age-restricted or members-only
 # tracks. Accepts a browser name or "browser:profile" (e.g. "chrome", "firefox").
 # Leave commented out to disable.
 # cookies_from_browser = "chrome"
+
+# Optional: where the migration script stores its backup copy of output_dir.
+# Defaults to a sibling directory named "<output_dir>-backup".
+# backup_dir = "~/path/to/backup"
 
 # ntfy.sh topic — pick something unique and keep it private
 # Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app

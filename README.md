@@ -8,14 +8,31 @@ A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) f
 
 On each run, `sync.py`:
 
-1. Calls `yt-dlp` to download only **new** tracks from each configured playlist, in order (already-downloaded tracks are skipped via a persistent archive file)
+1. Calls `yt-dlp` to download only **new** tracks from each configured playlist, in order (already-downloaded tracks are skipped via a per-playlist archive file)
 2. Extracts audio, converts to **FLAC**, embeds a thumbnail as JPG album art, and writes metadata tags
 3. Uses 4 parallel download workers for speed
 4. Skips unavailable, private, or age-gated tracks without aborting the rest of the playlist
 5. Logs all activity to a rotating log file and stdout
 6. Sends a high-priority [ntfy.sh](https://ntfy.sh) push notification if a playlist sync fails outright
 
-The archive file is designed to live on a shared cloud drive (e.g., Google Drive) so multiple machines share the same state and never duplicate downloads.
+Each playlist is downloaded into its own subdirectory of `output_dir` and keeps its own `archive.txt`, so playlists stay isolated and can be added or removed independently. The output directory is designed to live on a shared cloud drive (e.g., Google Drive) so multiple machines share the same state and never duplicate downloads.
+
+### Directory layout
+
+```
+output_dir/
+  dj/
+    archive.txt
+    Song Title - Artist.flac
+  nov14/
+    archive.txt
+    Song Title - Artist.flac
+  log.txt
+```
+
+- `output_dir/<playlist>/archive.txt` — yt-dlp download archive for that playlist.
+- `output_dir/<playlist>/*.flac` — downloaded tracks.
+- `output_dir/log.txt` — global run log.
 
 ---
 
@@ -56,21 +73,59 @@ All configuration lives in `config.toml` (gitignored — each machine has its ow
 | Key | Description |
 |---|---|
 | `ytdlp_path` | Path to the yt-dlp binary or wrapper script. Supports `~` expansion. See [yt-dlp installation](#yt-dlp-installation). |
-| `output_dir` | Directory where downloaded FLAC files are saved. Created automatically if it doesn't exist. |
-| `playlist_urls` | List of YouTube or YouTube Music playlist URLs to sync, in order. The legacy single `playlist_url` key is still supported. |
+| `output_dir` | Root directory for downloads. Each playlist gets its own subdirectory here. Created automatically if it doesn't exist. |
+| `playlists` | List of tables with `name` and `url`. Each playlist gets its own subdirectory and `archive.txt`. |
+| `playlist_urls` | Optional alternative to `playlists`. A list of URLs; directory names are derived from the playlist titles. |
+| `playlist_url` | Optional legacy single URL. Still supported for backward compatibility. |
 | `cookies_from_browser` | Optional. Read cookies from a browser to reach age-restricted or members-only tracks (e.g. `"chrome"`, `"firefox"`, or `"browser:profile"`). |
+| `backup_dir` | Optional. Where the [migration script](#migrating-existing-downloads) stores its backup. Defaults to a sibling directory named `<output_dir>-backup`. |
 | `ntfy_topic` | Your [ntfy.sh](https://ntfy.sh) topic name for failure notifications. Pick something unique and keep it private. |
 
 Example `config.toml`:
 
 ```toml
-ytdlp_path   = "~/dev/yt-dlp/yt-dlp.sh"
-output_dir   = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
-playlist_urls = [
-    "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
-]
-ntfy_topic   = "your-unique-topic-name"
+ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
+output_dir = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
+
+[[playlists]]
+name = "dj"
+url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+
+[[playlists]]
+name = "nov14"
+url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+
+ntfy_topic = "your-unique-topic-name"
 ```
+
+If `name` is omitted (or when using `playlist_urls`), the directory name is derived from the playlist title. If the title is empty or invalid, the playlist ID is used. If two playlists resolve to the same name, the playlist ID is appended to disambiguate.
+
+---
+
+## Migrating existing downloads
+
+If you previously ran an older version of this script that downloaded everything into a single flat directory, `migrate.py` can reorganize those files into the per-playlist layout. It:
+
+1. Backs up the current `output_dir` to a timestamped directory (default: a sibling named `<output_dir>-backup`, configurable via `backup_dir`).
+2. Removes duplicate files (for example, an `.mp3` when a matching `.flac` exists).
+3. Reads the `purl` metadata tag from each remaining file to find its YouTube video ID, then maps it to the playlist that contains it.
+4. Moves the file into `output_dir/<playlist>/`.
+5. Seeds each per-playlist `archive.txt` with the moved files' IDs.
+6. Moves files whose ID is not in any configured playlist to `output_dir/_unmatched/`.
+
+The script is a **dry run by default**. Preview the plan first:
+
+```sh
+python3 migrate.py
+```
+
+Then apply it:
+
+```sh
+python3 migrate.py --apply
+```
+
+> **Note:** Run the migration only once. The backup is your safety net; if anything looks wrong, restore from the backup directory.
 
 ---
 

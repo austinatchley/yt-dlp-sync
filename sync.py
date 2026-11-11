@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
+import argparse
 import logging
 import logging.handlers
+import re
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
-from typing import Any
 from pathlib import Path
+from typing import Any
+
 import tomllib
 
 CONFIG_PATH = Path(__file__).parent / "config.toml"
@@ -26,34 +30,105 @@ def send_ntfy(topic: str, title: str, message: str, priority: str = "default") -
     urllib.request.urlopen(req, timeout=10)
 
 
-def get_playlist_urls(config: dict[str, Any]) -> list[str]:
+def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
+    """Return playlists as dicts with ``name`` (optional) and ``url``.
+
+    Supports three config shapes:
+
+    - ``[[playlists]]`` tables with ``name`` and ``url``
+    - ``playlist_urls`` list of URLs (names derived from playlist titles)
+    - ``playlist_url`` single URL (legacy)
+    """
+    playlists = config.get("playlists")
+    if playlists:
+        return [{"name": p.get("name"), "url": p["url"]} for p in playlists]
+
     urls = config.get("playlist_urls")
     if urls is not None:
-        return list(urls)
-    return [config["playlist_url"]]
+        return [{"name": None, "url": u} for u in urls]
+
+    return [{"name": None, "url": config["playlist_url"]}]
 
 
-def playlist_reachable(ytdlp: str, playlist_url: str) -> bool:
+def sanitize_dir_name(name: str) -> str:
+    """Make a playlist title safe for use as a directory name."""
+    name = re.sub(r'[\\/:*?"<>|]', "_", name)
+    name = re.sub(r"[\x00-\x1f]", "", name)
+    name = name.strip().strip(".")
+    return name or "playlist"
+
+
+def playlist_url_id(url: str) -> str:
+    """Extract the playlist id from a URL, if present."""
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    ids = query.get("list")
+    return ids[0] if ids else ""
+
+
+def resolve_playlist_name(ytdlp: str, url: str) -> str:
+    """Resolve the playlist title, falling back to its id."""
+    result = subprocess.run(
+        [
+            ytdlp,
+            "--flat-playlist",
+            "--playlist-items", "1",
+            "--print", "%(playlist_title)s",
+            url,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if lines:
+        return sanitize_dir_name(lines[0])
+    return sanitize_dir_name(playlist_url_id(url) or "playlist")
+
+
+def playlist_reachable(ytdlp: str, url: str) -> bool:
     """Check that the playlist itself loads. Individual unavailable tracks do
     not affect this; a deleted/private/invalid playlist returns non-zero."""
     result = subprocess.run(
-        [ytdlp, "--flat-playlist", "--ignore-errors", "--print", "%(id)s", playlist_url],
+        [ytdlp, "--flat-playlist", "--ignore-errors", "--print", "%(id)s", url],
         capture_output=True,
         text=True,
     )
     return result.returncode == 0
 
 
+def resolve_playlists(ytdlp: str, config: dict[str, Any]) -> list[tuple[str, str]]:
+    """Resolve each playlist to a unique (directory_name, url) pair."""
+    resolved: list[tuple[str, str]] = []
+    used: set[str] = set()
+
+    for playlist in get_playlists(config):
+        url = playlist["url"]
+        name = playlist.get("name") or resolve_playlist_name(ytdlp, url)
+        name = sanitize_dir_name(name)
+
+        if name in used:
+            suffix = playlist_url_id(url) or str(len(resolved) + 1)
+            name = f"{name}-{suffix}"
+        used.add(name)
+        resolved.append((name, url))
+
+    return resolved
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Sync YouTube playlists to FLAC.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print resolved playlists and exit without downloading.",
+    )
+    args = parser.parse_args()
+
     config = load_config()
 
     output_dir = Path(config["output_dir"]).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    log_path = str(output_dir / "log.txt")
-    archive_path = str(output_dir / "archive.txt")
-
-    playlist_urls = get_playlist_urls(config)
+    log_path = output_dir / "log.txt"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -66,9 +141,15 @@ def main() -> int:
         ],
     )
 
-    logging.info("=== sync started ===")
-
     ytdlp = str(Path(config["ytdlp_path"]).expanduser())
+    playlists = resolve_playlists(ytdlp, config)
+
+    if args.dry_run:
+        for name, url in playlists:
+            print(f"{name}\t{url}")
+        return 0
+
+    logging.info("=== sync started ===")
 
     base_cmd: list[str] = [
         ytdlp,
@@ -78,7 +159,6 @@ def main() -> int:
         "--convert-thumbnails", "jpg",
         "--add-metadata",
         "--yes-playlist",
-        "--download-archive", archive_path,
         # skip unavailable/private/age-gated tracks instead of aborting the playlist
         "--ignore-errors",
         "-N", "4",
@@ -87,7 +167,6 @@ def main() -> int:
         "--no-write-thumbnail",
         # only prints for newly downloaded files (after move to final location)
         "--print", "after_move:Downloaded: %(title)s - %(artist,uploader)s",
-        "-o", str(output_dir / "%(title)s - %(artist,uploader)s.%(ext)s"),
     ]
 
     # Optional: pass browser cookies to reach age-restricted/members-only tracks.
@@ -97,17 +176,27 @@ def main() -> int:
         base_cmd.extend(["--cookies-from-browser", str(cookies)])
 
     failed: list[str] = []
-    for playlist_url in playlist_urls:
-        logging.info(f"=== syncing {playlist_url} ===")
+    for name, url in playlists:
+        playlist_dir = output_dir / name
+        playlist_dir.mkdir(parents=True, exist_ok=True)
+        archive_path = playlist_dir / "archive.txt"
+
+        logging.info(f"=== syncing {url} -> {playlist_dir} ===")
 
         # A reachable playlist may still contain unavailable tracks, which makes
         # yt-dlp exit non-zero. Only a playlist that cannot load at all is fatal.
-        if not playlist_reachable(ytdlp, playlist_url):
-            failed.append(playlist_url)
-            logging.error(f"Playlist could not be loaded: {playlist_url}")
+        if not playlist_reachable(ytdlp, url):
+            failed.append(url)
+            logging.error(f"Playlist could not be loaded: {url}")
             continue
 
-        result = subprocess.run(base_cmd + [playlist_url], capture_output=True, text=True)
+        cmd = base_cmd + [
+            "--download-archive", str(archive_path),
+            "-o", str(playlist_dir / "%(title)s - %(artist,uploader)s.%(ext)s"),
+            url,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
         downloaded = 0
         for line in result.stdout.strip().splitlines():
@@ -120,13 +209,13 @@ def main() -> int:
             logging.error(line)
 
         logging.info(
-            f"=== finished {playlist_url} "
+            f"=== finished {name} "
             f"({downloaded} new track(s), {len(error_lines)} error line(s)) ==="
         )
 
         if result.returncode != 0:
             logging.warning(
-                f"yt-dlp exited with code {result.returncode} for {playlist_url}; "
+                f"yt-dlp exited with code {result.returncode} for {name}; "
                 "some tracks may be unavailable (see errors above)"
             )
 
