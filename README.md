@@ -1,6 +1,6 @@
 # yt-dlp-sync
 
-A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for automatically syncing a YouTube or YouTube Music playlist to a local machine as FLAC audio files. Designed to run on a schedule (e.g., via cron), it downloads only new tracks on each run, embeds album art and metadata, and sends a push notification via [ntfy.sh](https://ntfy.sh) if anything goes wrong. Intended for use on macOS and Windows Subsystem for Linux (WSL).
+A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for automatically syncing one or more YouTube or YouTube Music playlists to a local machine as FLAC audio files. Designed to run on a schedule (e.g., via cron), it downloads only new tracks on each run, embeds album art and metadata, and sends a push notification via [ntfy.sh](https://ntfy.sh) if anything goes wrong. Intended for use on macOS and Windows Subsystem for Linux (WSL).
 
 ---
 
@@ -8,11 +8,12 @@ A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) f
 
 On each run, `sync.py`:
 
-1. Calls `yt-dlp` to download only **new** tracks from the configured playlist (already-downloaded tracks are skipped via a persistent archive file)
+1. Calls `yt-dlp` to download only **new** tracks from each configured playlist, in order (already-downloaded tracks are skipped via a persistent archive file)
 2. Extracts audio, converts to **FLAC**, embeds a thumbnail as JPG album art, and writes metadata tags
 3. Uses 4 parallel download workers for speed
-4. Logs all activity to a rotating log file and stdout
-5. Sends a high-priority [ntfy.sh](https://ntfy.sh) push notification if `yt-dlp` exits with a non-zero status
+4. Skips unavailable, private, or age-gated tracks without aborting the rest of the playlist
+5. Logs all activity to a rotating log file and stdout
+6. Sends a high-priority [ntfy.sh](https://ntfy.sh) push notification if a playlist sync fails outright
 
 The archive file is designed to live on a shared cloud drive (e.g., Google Drive) so multiple machines share the same state and never duplicate downloads.
 
@@ -56,7 +57,8 @@ All configuration lives in `config.toml` (gitignored — each machine has its ow
 |---|---|
 | `ytdlp_path` | Path to the yt-dlp binary or wrapper script. Supports `~` expansion. See [yt-dlp installation](#yt-dlp-installation). |
 | `output_dir` | Directory where downloaded FLAC files are saved. Created automatically if it doesn't exist. |
-| `playlist_url` | The YouTube or YouTube Music playlist URL to sync. |
+| `playlist_urls` | List of YouTube or YouTube Music playlist URLs to sync, in order. The legacy single `playlist_url` key is still supported. |
+| `cookies_from_browser` | Optional. Read cookies from a browser to reach age-restricted or members-only tracks (e.g. `"chrome"`, `"firefox"`, or `"browser:profile"`). |
 | `ntfy_topic` | Your [ntfy.sh](https://ntfy.sh) topic name for failure notifications. Pick something unique and keep it private. |
 
 Example `config.toml`:
@@ -64,7 +66,9 @@ Example `config.toml`:
 ```toml
 ytdlp_path   = "~/dev/yt-dlp/yt-dlp.sh"
 output_dir   = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
-playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+playlist_urls = [
+    "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
+]
 ntfy_topic   = "your-unique-topic-name"
 ```
 
@@ -244,7 +248,7 @@ Create a task that calls the WSL binary directly so it runs on a Windows schedul
 
 ## Notifications
 
-When `yt-dlp` exits with a non-zero status code, `sync.py` sends a high-priority push notification to your [ntfy.sh](https://ntfy.sh) topic with the exit code and a pointer to the log file.
+Unavailable, private, and age-gated tracks are skipped and logged; they do not fail the run. When a playlist itself cannot be loaded (deleted, private, or invalid URL), `sync.py` sends a high-priority push notification to your [ntfy.sh](https://ntfy.sh) topic with a pointer to the log file.
 
 To receive notifications, subscribe to your topic:
 - **Web:** `https://ntfy.sh/<your-topic>`
@@ -262,5 +266,5 @@ Log format:
 ```
 2025-01-15 06:00:01,234 INFO === sync started ===
 2025-01-15 06:00:04,891 INFO Downloaded: Song Title - Artist Name
-2025-01-15 06:01:12,003 INFO === sync finished (exit code 0) ===
+2025-01-15 06:01:12,003 INFO === sync finished (0 failed) ===
 ```

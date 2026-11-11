@@ -9,8 +9,16 @@ ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 # macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
 output_dir = "~/path/to/output"
 
-# YouTube Music playlist URL
-playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
+# YouTube / YouTube Music playlist URLs — synced in order.
+# The legacy single `playlist_url` key is still supported.
+playlist_urls = [
+    "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
+]
+
+# Optional: read cookies from a browser to reach age-restricted or members-only
+# tracks. Accepts a browser name or "browser:profile" (e.g. "chrome", "firefox").
+# Leave commented out to disable.
+# cookies_from_browser = "chrome"
 
 # ntfy.sh topic — pick something unique and keep it private
 # Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app
