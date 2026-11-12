@@ -198,7 +198,12 @@ class SyncIntegrationTests(IntegrationTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("alpha\t", result.stdout)
         self.assertIn("beta\t", result.stdout)
-        self.assertFalse((self.output / "alpha").exists())
+        self.assertFalse(self.output.exists())
+
+    def test_status_creates_nothing(self):
+        result = self.run_cli(SYNC, "--status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_only(self):
         result = self.run_cli(SYNC, "--only", "alpha")

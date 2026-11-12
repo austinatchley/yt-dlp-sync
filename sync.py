@@ -44,7 +44,7 @@ KNOWN_CONFIG_KEYS = {
 }
 KNOWN_PLAYLIST_KEYS = {"name", "url"}
 
-AUDIO_EXTS = {".flac", ".mp3", ".m4a", ".opus", ".ogg", ".wav", ".webm"}
+AUDIO_EXTS = {".flac", ".mp3", ".m4a", ".opus", ".ogg", ".wav", ".webm", ".aac"}
 
 
 class ConfigError(Exception):
@@ -173,19 +173,21 @@ def _stream_download(cmd: list[str]) -> tuple[int, int, list[str]]:
         text=True,
         bufsize=1,
     )
+    stdout = proc.stdout
+    stderr = proc.stderr
+    if stdout is None or stderr is None:  # pragma: no cover - PIPE always set
+        raise RuntimeError("failed to capture yt-dlp output")
 
     def read_stdout() -> None:
         nonlocal downloaded
-        assert proc.stdout is not None
-        for line in proc.stdout:
+        for line in stdout:
             line = line.rstrip("\n")
             logging.info(line)
             if line.startswith("Downloaded:"):
                 downloaded += 1
 
     def read_stderr() -> None:
-        assert proc.stderr is not None
-        for line in proc.stderr:
+        for line in stderr:
             line = line.rstrip("\n")
             errors.append(line)
             logging.error(line)
@@ -199,10 +201,8 @@ def _stream_download(cmd: list[str]) -> tuple[int, int, list[str]]:
     for thread in threads:
         thread.join()
 
-    if proc.stdout is not None:
-        proc.stdout.close()
-    if proc.stderr is not None:
-        proc.stderr.close()
+    stdout.close()
+    stderr.close()
 
     return proc.wait(), downloaded, errors
 
@@ -312,9 +312,12 @@ def resolve_playlists(
         name = playlist.get("name") or resolve_playlist_name(ytdlp, url, attempts)
         name = sanitize_dir_name(name)
 
-        if name in used:
-            suffix = playlist_url_id(url) or str(len(resolved) + 1)
-            name = f"{name}-{suffix}"
+        base = name
+        counter = 1
+        while name in used:
+            suffix = playlist_url_id(url) or str(counter)
+            name = f"{base}-{suffix}"
+            counter += 1
         used.add(name)
         resolved.append((name, url))
 
@@ -333,7 +336,11 @@ def select_playlists(
         return playlists, []
 
     available = {name for name, _ in playlists}
-    missing = [name for name in only if name not in available]
+    missing: list[str] = []
+    for name in only:
+        if name not in available and name not in missing:
+            missing.append(name)
+
     wanted = set(only)
     selected = [(name, url) for name, url in playlists if name in wanted]
     return selected, missing
@@ -384,7 +391,7 @@ def main() -> int:
     parser.add_argument(
         "--status",
         action="store_true",
-        help="Show per-playlist file/archive counts and exit (offline).",
+        help="Show per-playlist file/archive counts and exit (no download).",
     )
     args = parser.parse_args()
 
@@ -401,22 +408,12 @@ def main() -> int:
 
     retries = get_retries(config)
 
-    output_dir = Path(config["output_dir"]).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    log_path = output_dir / "log.txt"
-
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[
-            logging.handlers.RotatingFileHandler(
-                log_path, maxBytes=1_000_000, backupCount=5
-            ),
-            logging.StreamHandler(),
-        ],
     )
 
+    output_dir = Path(config["output_dir"]).expanduser()
     ytdlp = str(Path(config["ytdlp_path"]).expanduser())
     resolved = resolve_playlists(ytdlp, config, retries)
 
@@ -440,6 +437,16 @@ def main() -> int:
         for name, url in playlists:
             print(f"{name}\t{url}")
         return 0
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / "log.txt"
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_path, maxBytes=1_000_000, backupCount=5
+    )
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    )
+    logging.getLogger().addHandler(file_handler)
 
     logging.info("=== sync started ===")
 

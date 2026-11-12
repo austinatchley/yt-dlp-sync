@@ -149,7 +149,6 @@ def run_capture(
     return result
 
 
-
 def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
     playlists = config.get("playlists")
     if playlists:
@@ -241,9 +240,12 @@ def resolve_playlists(
         name = playlist.get("name") or resolve_playlist_name(ytdlp, url, attempts)
         name = sanitize_dir_name(name)
 
-        if name in used:
-            suffix = playlist_url_id(url) or str(len(resolved) + 1)
-            name = f"{name}-{suffix}"
+        base = name
+        counter = 1
+        while name in used:
+            suffix = playlist_url_id(url) or str(counter)
+            name = f"{base}-{suffix}"
+            counter += 1
         used.add(name)
         resolved.append((name, url))
 
@@ -356,7 +358,7 @@ def main() -> int:
     duplicates = dedupe_plan(output_dir)
     duplicate_paths = {path.resolve() for path in duplicates}
 
-    files: list[tuple[Path, str | None]] = []
+    files: list[tuple[Path, str | None, str | None]] = []
     for path in sorted(output_dir.iterdir()):
         if not path.is_file() or path.name in SKIP_NAMES:
             continue
@@ -366,7 +368,7 @@ def main() -> int:
         if path.resolve() in duplicate_paths:
             continue
         video_id = video_id_from_file(path)
-        files.append((path, playlist_by_id.get(video_id)))
+        files.append((path, playlist_by_id.get(video_id), video_id))
 
     print(f"Output dir: {output_dir}")
     print(f"Backup dir: {backup_dir}")
@@ -376,7 +378,7 @@ def main() -> int:
     for path in duplicates:
         print(f"  remove {path.name}")
     print(f"Files to move: {len(files)}")
-    for path, name in files:
+    for path, name, _video_id in files:
         print(f"  {path.name} -> {name or '_unmatched'}")
 
     if not args.apply:
@@ -398,7 +400,7 @@ def main() -> int:
 
     archives: dict[str, set[str]] = {}
     moved = 0
-    for path, name in files:
+    for path, name, video_id in files:
         if not path.exists():
             logging.warning(f"skipping missing file: {path.name}")
             continue
@@ -407,10 +409,8 @@ def main() -> int:
         shutil.move(str(path), str(dest / path.name))
         moved += 1
 
-        if name:
-            video_id = video_id_from_file(dest / path.name)
-            if video_id:
-                archives.setdefault(name, set()).add(video_id)
+        if name and video_id:
+            archives.setdefault(name, set()).add(video_id)
 
     for name, ids in archives.items():
         archive = output_dir / name / "archive.txt"

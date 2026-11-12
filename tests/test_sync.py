@@ -72,6 +72,17 @@ class ResolvePlaylistsTests(unittest.TestCase):
             resolved = sync.resolve_playlists("/nonexistent/yt-dlp", config)
         self.assertEqual(resolved, [("dj", urls[0]), ("dj-BBB", urls[1])])
 
+    def test_multiple_collisions_resolve_uniquely(self):
+        urls = [
+            "https://x/playlist?list=AAA",
+            "https://x/playlist?list=BBB",
+            "https://x/playlist?list=CCC",
+        ]
+        config = {"playlists": [{"url": url} for url in urls]}
+        with mock.patch.object(sync, "resolve_playlist_name", return_value="dj"):
+            resolved = sync.resolve_playlists("/nonexistent/yt-dlp", config)
+        self.assertEqual([name for name, _ in resolved], ["dj", "dj-BBB", "dj-CCC"])
+
 
 class SelectPlaylistsTests(unittest.TestCase):
     def test_no_filter_returns_all(self):
@@ -88,6 +99,11 @@ class SelectPlaylistsTests(unittest.TestCase):
         selected, missing = sync.select_playlists([("dj", "u1")], ["nope"])
         self.assertEqual(selected, [])
         self.assertEqual(missing, ["nope"])
+
+    def test_missing_is_deduplicated(self):
+        selected, missing = sync.select_playlists([("dj", "u1")], ["x", "x"])
+        self.assertEqual(selected, [])
+        self.assertEqual(missing, ["x"])
 
 
 class ValidateConfigTests(unittest.TestCase):
