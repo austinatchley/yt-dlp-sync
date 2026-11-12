@@ -125,6 +125,12 @@ Then apply it:
 python3 migrate.py --apply
 ```
 
+The backup is a full copy of the output directory, which is slow for large libraries. If you already have a backup, skip it with:
+
+```sh
+python3 migrate.py --apply --skip-backup
+```
+
 > **Note:** Run the migration only once. The backup is your safety net; if anything looks wrong, restore from the backup directory.
 
 ---

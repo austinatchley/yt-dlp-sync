@@ -165,6 +165,11 @@ def main() -> int:
         action="store_true",
         help="Perform the migration (default: dry-run).",
     )
+    parser.add_argument(
+        "--skip-backup",
+        action="store_true",
+        help="Skip the output_dir backup. Only use when you already have one.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -191,12 +196,16 @@ def main() -> int:
             playlist_by_id.setdefault(video_id, name)
 
     duplicates = dedupe_plan(output_dir)
+    duplicate_paths = {path.resolve() for path in duplicates}
 
     files: list[tuple[Path, str | None]] = []
     for path in sorted(output_dir.iterdir()):
         if not path.is_file() or path.name in SKIP_NAMES:
             continue
         if path.suffix.lower() not in MEDIA_EXTS:
+            continue
+        # Duplicates are removed rather than moved, so don't plan to move them.
+        if path.resolve() in duplicate_paths:
             continue
         video_id = video_id_from_file(path)
         files.append((path, playlist_by_id.get(video_id)))
@@ -216,8 +225,11 @@ def main() -> int:
         print("Dry run. Re-run with --apply to execute.")
         return 0
 
-    backup = backup_output_dir(output_dir, backup_dir)
-    print(f"Backup created: {backup}")
+    if args.skip_backup:
+        print(f"Skipping backup (--skip-backup); assuming one exists in {backup_dir}")
+    else:
+        backup = backup_output_dir(output_dir, backup_dir)
+        print(f"Backup created: {backup}")
 
     for path in duplicates:
         path.unlink()
@@ -227,10 +239,15 @@ def main() -> int:
         (output_dir / name).mkdir(parents=True, exist_ok=True)
 
     archives: dict[str, set[str]] = {}
+    moved = 0
     for path, name in files:
+        if not path.exists():
+            logging.warning(f"skipping missing file: {path.name}")
+            continue
         dest = output_dir / (name or "_unmatched")
         dest.mkdir(parents=True, exist_ok=True)
         shutil.move(str(path), str(dest / path.name))
+        moved += 1
 
         if name:
             video_id = video_id_from_file(dest / path.name)
@@ -239,12 +256,17 @@ def main() -> int:
 
     for name, ids in archives.items():
         archive = output_dir / name / "archive.txt"
+        existing: set[str] = set()
+        if archive.exists():
+            existing = set(archive.read_text(encoding="utf-8").splitlines())
         with open(archive, "a", encoding="utf-8") as f:
             for video_id in sorted(ids):
-                f.write(f"youtube {video_id}\n")
+                line = f"youtube {video_id}"
+                if line not in existing:
+                    f.write(line + "\n")
 
     print(
-        f"Migration complete. {len(files)} files moved, "
+        f"Migration complete. {moved} files moved, "
         f"{len(duplicates)} duplicates removed."
     )
     return 0
