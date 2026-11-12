@@ -50,6 +50,7 @@ playlist_url = "https://music.youtube.com/playlist?list=..."     # legacy single
 ```sh
 python3 sync.py              # run the sync
 python3 sync.py --dry-run    # print resolved playlists and exit
+python3 sync.py --only dj    # sync only the named playlist(s)
 python3 migrate.py           # preview the migration plan (dry run)
 python3 migrate.py --apply   # back up, dedupe, and move files
 python3 migrate.py --apply --skip-backup   # skip the slow full-copy backup

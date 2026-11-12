@@ -66,6 +66,19 @@ output_dir/
 
 ---
 
+## Usage
+
+```sh
+python3 sync.py                        # sync every configured playlist
+python3 sync.py --dry-run              # print resolved playlists and exit
+python3 sync.py --only dj              # sync only the "dj" playlist
+python3 sync.py --only dj --only nov14 # sync several
+```
+
+`--only` takes the resolved playlist names (the directory names shown by `--dry-run`) and may be repeated. An unknown name prints the available names.
+
+---
+
 ## Configuration
 
 All configuration lives in `config.toml` (gitignored — each machine has its own). Copy `config.example.toml` to get started.

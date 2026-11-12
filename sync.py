@@ -309,12 +309,36 @@ def resolve_playlists(
     return resolved
 
 
+def select_playlists(
+    playlists: list[tuple[str, str]], only: list[str] | None
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Filter ``playlists`` to the requested names.
+
+    Returns ``(selected, missing)`` where ``missing`` lists requested names that
+    did not match any playlist.
+    """
+    if not only:
+        return playlists, []
+
+    available = {name for name, _ in playlists}
+    missing = [name for name in only if name not in available]
+    wanted = set(only)
+    selected = [(name, url) for name, url in playlists if name in wanted]
+    return selected, missing
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync YouTube playlists to FLAC.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print resolved playlists and exit without downloading.",
+    )
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="NAME",
+        help="Sync only the named playlist(s). May be repeated.",
     )
     args = parser.parse_args()
 
@@ -347,7 +371,16 @@ def main() -> int:
     )
 
     ytdlp = str(Path(config["ytdlp_path"]).expanduser())
-    playlists = resolve_playlists(ytdlp, config, retries)
+    resolved = resolve_playlists(ytdlp, config, retries)
+
+    playlists, missing = select_playlists(resolved, args.only)
+    if missing:
+        available = ", ".join(name for name, _ in resolved)
+        print(
+            f"Unknown playlist(s): {', '.join(missing)}. Available: {available}",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.dry_run:
         for name, url in playlists:

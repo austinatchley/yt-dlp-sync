@@ -62,6 +62,23 @@ class ResolvePlaylistsTests(unittest.TestCase):
         self.assertEqual(resolved, [("dj", urls[0]), ("dj-BBB", urls[1])])
 
 
+class SelectPlaylistsTests(unittest.TestCase):
+    def test_no_filter_returns_all(self):
+        playlists = [("dj", "u1"), ("nov14", "u2")]
+        self.assertEqual(sync.select_playlists(playlists, None), (playlists, []))
+
+    def test_filters(self):
+        playlists = [("dj", "u1"), ("nov14", "u2")]
+        selected, missing = sync.select_playlists(playlists, ["nov14"])
+        self.assertEqual(selected, [("nov14", "u2")])
+        self.assertEqual(missing, [])
+
+    def test_missing(self):
+        selected, missing = sync.select_playlists([("dj", "u1")], ["nope"])
+        self.assertEqual(selected, [])
+        self.assertEqual(missing, ["nope"])
+
+
 class ValidateConfigTests(unittest.TestCase):
     def test_valid(self):
         sync.validate_config(
