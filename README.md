@@ -10,7 +10,7 @@ On each run, `sync.py`:
 
 1. Calls `yt-dlp` to download only **new** tracks from each configured playlist, in order (already-downloaded tracks are skipped via a per-playlist archive file)
 2. Extracts audio, converts to **FLAC**, embeds a thumbnail as JPG album art, and writes metadata tags
-3. Uses 4 parallel download workers for speed
+3. Downloads up to 4 fragments concurrently per track for speed
 4. Skips unavailable, private, or age-gated tracks without aborting the rest of the playlist
 5. Logs all activity to a rotating log file and stdout
 6. Exits non-zero if a playlist fails to load, so your scheduler can alert you
@@ -325,3 +325,15 @@ Log format:
 2025-01-15 06:00:04,891 INFO Downloaded: Song Title - Artist Name
 2025-01-15 06:01:12,003 INFO === sync finished (0 failed) ===
 ```
+
+---
+
+## Development
+
+The project uses only the standard library. Run the tests with:
+
+```sh
+python3 -m unittest discover -s tests
+```
+
+CI runs the compile check and test suite on Python 3.11–3.13 for every push and pull request.

@@ -13,6 +13,8 @@ Long-term context for agents working in this repository. Keep this file up to da
 | `sync.py` | Main sync script. Resolves playlists, runs `yt-dlp` per playlist, logs, and reports failures via exit code. |
 | `migrate.py` | One-off migration script: backup, deduplicate, and move an old flat output directory into the per-playlist layout. |
 | `config.example.toml` | Example config. Copy to `config.toml` (gitignored). |
+| `tests/` | Standard-library `unittest` suite. Run with `python3 -m unittest discover -s tests`. |
+| `.github/workflows/ci.yml` | CI: compile check + test suite on Python 3.11–3.13. |
 | `README.md` | User-facing documentation. |
 | `AGENTS.md` | This file. |
 
@@ -82,7 +84,7 @@ python3 -m py_compile sync.py migrate.py
 - Keep `sync.py` and `migrate.py` self-contained and runnable directly with `python3`.
 - Use `tomllib` for config parsing.
 - Update `README.md` and `config.example.toml` whenever the config schema changes.
-- Run `python3 -m py_compile sync.py migrate.py` before committing.
+- Run `python3 -m py_compile sync.py migrate.py` and `python3 -m unittest discover -s tests` before committing.
 - Do not commit `config.toml` (gitignored).
 
 ## User preferences
