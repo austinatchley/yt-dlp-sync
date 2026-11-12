@@ -276,16 +276,21 @@ def resolve_playlist_name(
     return sanitize_dir_name(playlist_url_id(url) or "playlist")
 
 
-def playlist_reachable(
+def playlist_track_count(
     ytdlp: str, url: str, attempts: int = RETRY_ATTEMPTS_DEFAULT
-) -> bool:
-    """Check that the playlist itself loads. Individual unavailable tracks do
-    not affect this; a deleted/private/invalid playlist returns non-zero."""
+) -> int:
+    """Return the number of entries in the playlist, or -1 if it cannot be loaded.
+
+    Individual unavailable tracks do not affect this; a deleted/private/invalid
+    playlist yields -1.
+    """
     result = run_capture(
         [ytdlp, "--flat-playlist", "--ignore-errors", "--print", "%(id)s", url],
         attempts=attempts,
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        return -1
+    return sum(1 for line in result.stdout.splitlines() if line.strip())
 
 
 def resolve_playlists(
@@ -423,10 +428,13 @@ def main() -> int:
 
         # A reachable playlist may still contain unavailable tracks, which makes
         # yt-dlp exit non-zero. Only a playlist that cannot load at all is fatal.
-        if not playlist_reachable(ytdlp, url, retries):
+        track_count = playlist_track_count(ytdlp, url, retries)
+        if track_count < 0:
             failed.append(url)
             logging.error(f"Playlist could not be loaded: {url}")
             continue
+
+        logging.info(f'Playlist "{name}" has {track_count} track(s)')
 
         cmd = base_cmd + [
             "--download-archive", str(archive_path),

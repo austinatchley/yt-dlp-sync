@@ -8,6 +8,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sync
 
 
+def completed(stdout: str, returncode: int = 0):
+    class Completed:
+        pass
+
+    result = Completed()
+    result.stdout = stdout
+    result.returncode = returncode
+    return result
+
+
 class SanitizeDirNameTests(unittest.TestCase):
     def test_replaces_path_separators(self):
         self.assertEqual(sync.sanitize_dir_name("a/b\\c:d"), "a_b_c_d")
@@ -159,6 +169,18 @@ class RetryHelperTests(unittest.TestCase):
         )
         self.assertFalse(sync.looks_transient("ERROR: [youtube] x: Video unavailable"))
         self.assertFalse(sync.looks_transient("ERROR: Sign in to confirm your age"))
+
+
+class PlaylistTrackCountTests(unittest.TestCase):
+    def test_counts_nonempty_lines(self):
+        with mock.patch.object(sync, "run_capture", return_value=completed("a\n\nb\n")):
+            self.assertEqual(sync.playlist_track_count("/x", "u"), 2)
+
+    def test_unreachable_returns_negative(self):
+        with mock.patch.object(
+            sync, "run_capture", return_value=completed("", returncode=1)
+        ):
+            self.assertEqual(sync.playlist_track_count("/x", "u"), -1)
 
 
 if __name__ == "__main__":
