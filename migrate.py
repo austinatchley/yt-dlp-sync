@@ -250,6 +250,21 @@ def resolve_playlists(
     return resolved
 
 
+def latest_backup(
+    backup_dir: Path, name: str, exclude: Path | None = None
+) -> Path | None:
+    """Return the most recent existing backup directory for ``name``, if any."""
+    candidates = [
+        path
+        for path in backup_dir.glob(f"{name}-*")
+        if path.is_dir() and path != exclude
+    ]
+    if not candidates:
+        return None
+    # Timestamps use ``%Y%m%d-%H%M%S`` so lexicographic order matches time.
+    return max(candidates, key=lambda path: path.name)
+
+
 def backup_output_dir(output_dir: Path, backup_dir: Path) -> Path:
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     dest = backup_dir / f"{output_dir.name}-{timestamp}"
@@ -257,7 +272,12 @@ def backup_output_dir(output_dir: Path, backup_dir: Path) -> Path:
     logging.info(f"Backing up {output_dir} -> {dest}")
 
     if shutil.which("rsync"):
-        subprocess.run(["rsync", "-a", f"{output_dir}/", f"{dest}/"], check=True)
+        cmd = ["rsync", "-a"]
+        previous = latest_backup(backup_dir, output_dir.name, exclude=dest)
+        if previous is not None:
+            cmd.append(f"--link-dest={previous.resolve()}")
+            logging.info(f"Hardlinking unchanged files from {previous.name}")
+        subprocess.run(cmd + [f"{output_dir}/", f"{dest}/"], check=True)
     else:
         shutil.copytree(output_dir, dest, dirs_exist_ok=True)
 

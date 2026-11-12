@@ -73,7 +73,7 @@ python3 -m py_compile sync.py migrate.py
 ## Migration notes
 
 - The migration is a one-off operation. It backs up the output directory before changing anything.
-- The backup is a full copy (`rsync -a`, falling back to `shutil.copytree`) in a timestamped directory. This is slow for large libraries (~43 GB took over 15 min), so `--skip-backup` skips it when a backup already exists.
+- The backup is a timestamped copy of the output directory. With `rsync`, unchanged files are hardlinked from the most recent previous backup (`--link-dest`), so repeat backups are fast and space-efficient; with no previous backup it is a full copy (`shutil.copytree` is the fallback). `--skip-backup` skips it entirely when a backup already exists.
 - Deduplication removes any non-`.flac` media file that has a matching `.flac` sibling (same stem). Duplicates are excluded from the move plan.
 - Files are mapped to playlists by reading the `purl` metadata tag with `ffprobe` and extracting the YouTube video ID.
 - Files whose ID is not in any configured playlist are moved to `output_dir/_unmatched/`.

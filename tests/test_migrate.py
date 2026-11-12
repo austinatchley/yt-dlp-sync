@@ -71,6 +71,29 @@ class VideoIdTests(unittest.TestCase):
             self.assertIsNone(migrate.video_id_from_file(Path("x.flac")))
 
 
+class LatestBackupTests(unittest.TestCase):
+    def test_returns_most_recent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out-20260101-000000").mkdir()
+            (root / "out-20260202-000000").mkdir()
+            (root / "out-notadir").write_text("")
+            result = migrate.latest_backup(root, "out")
+        self.assertEqual(result.name, "out-20260202-000000")
+
+    def test_none_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(migrate.latest_backup(Path(tmp), "out"))
+
+    def test_excludes_given_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "out-a").mkdir()
+            (root / "out-b").mkdir()
+            result = migrate.latest_backup(root, "out", exclude=root / "out-b")
+        self.assertEqual(result.name, "out-a")
+
+
 class ValidateConfigTests(unittest.TestCase):
     def test_valid(self):
         migrate.validate_config(
