@@ -1,5 +1,8 @@
 # Copy this file to config.toml and fill in your values.
 # config.toml is gitignored — each machine has its own.
+#
+# NOTE: top-level keys must come *before* any [[playlists]] table. In TOML,
+# keys that follow a [[playlists]] header belong to that playlist.
 
 # Path to the yt-dlp binary
 # macOS example:  "~/dev/yt-dlp/yt-dlp.sh"
@@ -8,6 +11,27 @@ ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 # Root directory for downloads. Each playlist gets its own subdirectory here.
 # macOS example:  "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
 output_dir = "~/path/to/output"
+
+# Optional: read cookies from a browser to reach age-restricted or members-only
+# tracks. Accepts a browser name or "browser:profile" (e.g. "chrome", "firefox").
+# cookies_from_browser = "chrome"
+
+# Optional: number of attempts for network operations (metadata fetches,
+# downloads, notifications). Default 3.
+# retries = 3
+
+# Optional: where the migration script stores its backup copy of output_dir.
+# Defaults to a sibling directory named "<output_dir>-backup".
+# backup_dir = "~/path/to/backup"
+
+# ntfy.sh topic — pick something unique and keep it private
+# Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app
+ntfy_topic = "your-unique-topic-name"
+
+# Alternative to [[playlists]]: a plain list of URLs, with directory names
+# derived from the playlist titles. Also keep this above the table below.
+# playlist_urls = ["https://music.youtube.com/playlist?list=YOURPLAYLISTID"]
+# playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
 
 # Playlists to sync. Each entry creates a subdirectory named `name` under
 # output_dir, with its own archive.txt and FLAC files.
@@ -19,23 +43,3 @@ url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
 # [[playlists]]
 # name = "nov14"
 # url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
-
-# Optional: a plain list of URLs. Directory names are derived from the
-# playlist titles. The legacy single `playlist_url` key also still works.
-# playlist_urls = [
-#     "https://music.youtube.com/playlist?list=YOURPLAYLISTID",
-# ]
-# playlist_url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
-
-# Optional: read cookies from a browser to reach age-restricted or members-only
-# tracks. Accepts a browser name or "browser:profile" (e.g. "chrome", "firefox").
-# Leave commented out to disable.
-# cookies_from_browser = "chrome"
-
-# Optional: where the migration script stores its backup copy of output_dir.
-# Defaults to a sibling directory named "<output_dir>-backup".
-# backup_dir = "~/path/to/backup"
-
-# ntfy.sh topic — pick something unique and keep it private
-# Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app
-ntfy_topic = "your-unique-topic-name"

@@ -5,6 +5,7 @@ import logging.handlers
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -14,20 +15,173 @@ import tomllib
 
 CONFIG_PATH = Path(__file__).parent / "config.toml"
 
+RETRY_ATTEMPTS_DEFAULT = 3
+TRANSIENT_ERROR_MARKERS = (
+    "unable to download webpage",
+    "unable to download api page",
+    "http error 5",
+    "http error 429",
+    "timed out",
+    "timeout",
+    "temporary failure",
+    "connection reset",
+    "connection aborted",
+    "connection error",
+    "network is unreachable",
+    "read timed out",
+    "too many requests",
+)
+
+
+class ConfigError(Exception):
+    """Raised when config.toml is missing required or well-typed values."""
+
 
 def load_config() -> dict[str, Any]:
     with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
 
-def send_ntfy(topic: str, title: str, message: str, priority: str = "default") -> None:
+def get_retries(config: dict[str, Any]) -> int:
+    value = config.get("retries", RETRY_ATTEMPTS_DEFAULT)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return RETRY_ATTEMPTS_DEFAULT
+    return value
+
+
+def validate_config(config: dict[str, Any], *, needs_ntfy: bool = True) -> None:
+    """Raise :class:`ConfigError` listing every problem found in the config."""
+    errors: list[str] = []
+
+    for key in ("ytdlp_path", "output_dir"):
+        value = config.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{key!r} must be a non-empty string")
+
+    if needs_ntfy:
+        value = config.get("ntfy_topic")
+        if not isinstance(value, str) or not value.strip():
+            errors.append("'ntfy_topic' must be a non-empty string")
+
+    ytdlp_path = config.get("ytdlp_path")
+    if isinstance(ytdlp_path, str) and ("/" in ytdlp_path or ytdlp_path.startswith("~")):
+        if not Path(ytdlp_path).expanduser().exists():
+            errors.append(f"'ytdlp_path' not found: {ytdlp_path}")
+
+    playlists = config.get("playlists")
+    playlist_urls = config.get("playlist_urls")
+    playlist_url = config.get("playlist_url")
+
+    if playlists is not None:
+        if not isinstance(playlists, list) or not playlists:
+            errors.append("'playlists' must be a non-empty list of tables")
+        else:
+            for index, entry in enumerate(playlists):
+                if not isinstance(entry, dict):
+                    errors.append(f"'playlists[{index}]' must be a table with a 'url'")
+                    continue
+                if not isinstance(entry.get("url"), str) or not entry["url"].strip():
+                    errors.append(f"'playlists[{index}].url' must be a non-empty string")
+                if "name" in entry and not isinstance(entry["name"], str):
+                    errors.append(f"'playlists[{index}].name' must be a string")
+    elif playlist_urls is not None:
+        if not isinstance(playlist_urls, list) or not playlist_urls:
+            errors.append("'playlist_urls' must be a non-empty list of URLs")
+        else:
+            for index, url in enumerate(playlist_urls):
+                if not isinstance(url, str) or not url.strip():
+                    errors.append(f"'playlist_urls[{index}]' must be a non-empty string")
+    elif playlist_url is not None:
+        if not isinstance(playlist_url, str) or not playlist_url.strip():
+            errors.append("'playlist_url' must be a non-empty string")
+    else:
+        errors.append(
+            "no playlists configured: set 'playlists', 'playlist_urls', or 'playlist_url'"
+        )
+
+    cookies = config.get("cookies_from_browser")
+    if cookies is not None and not isinstance(cookies, str):
+        errors.append("'cookies_from_browser' must be a string")
+
+    retries = config.get("retries", RETRY_ATTEMPTS_DEFAULT)
+    if isinstance(retries, bool) or not isinstance(retries, int) or retries < 1:
+        errors.append("'retries' must be a positive integer")
+
+    if errors:
+        raise ConfigError("Invalid config.toml:\n  - " + "\n  - ".join(errors))
+
+
+def run_capture(
+    cmd: list[str],
+    attempts: int = RETRY_ATTEMPTS_DEFAULT,
+    delay: float = 2.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command, retrying on a non-zero exit with linear backoff."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    for attempt in range(1, attempts):
+        if result.returncode == 0:
+            return result
+        logging.warning(
+            "command failed (exit %s); retry %s/%s in %.0fs",
+            result.returncode,
+            attempt,
+            attempts - 1,
+            delay,
+        )
+        time.sleep(delay)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
+
+def looks_transient(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return any(marker in lowered for marker in TRANSIENT_ERROR_MARKERS)
+
+
+def run_download(
+    cmd: list[str],
+    attempts: int = RETRY_ATTEMPTS_DEFAULT,
+    delay: float = 5.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a yt-dlp download, retrying only transient (network) failures."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    for attempt in range(1, attempts):
+        if result.returncode == 0 or not looks_transient(result.stderr):
+            return result
+        logging.warning(
+            "yt-dlp failed with a transient error; retry %s/%s in %.0fs",
+            attempt,
+            attempts - 1,
+            delay,
+        )
+        time.sleep(delay)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
+
+def send_ntfy(
+    topic: str,
+    title: str,
+    message: str,
+    priority: str = "default",
+    attempts: int = RETRY_ATTEMPTS_DEFAULT,
+) -> None:
     req = urllib.request.Request(
         f"https://ntfy.sh/{topic}",
         data=message.encode(),
         method="POST",
         headers={"Title": title, "Priority": priority},
     )
-    urllib.request.urlopen(req, timeout=10)
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response.read()
+            return
+        except Exception:
+            if attempt == attempts:
+                raise
+            time.sleep(2 * attempt)
+
 
 
 def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
@@ -65,9 +219,11 @@ def playlist_url_id(url: str) -> str:
     return ids[0] if ids else ""
 
 
-def resolve_playlist_name(ytdlp: str, url: str) -> str:
+def resolve_playlist_name(
+    ytdlp: str, url: str, attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> str:
     """Resolve the playlist title, falling back to its id."""
-    result = subprocess.run(
+    result = run_capture(
         [
             ytdlp,
             "--flat-playlist",
@@ -75,8 +231,7 @@ def resolve_playlist_name(ytdlp: str, url: str) -> str:
             "--print", "%(playlist_title)s",
             url,
         ],
-        capture_output=True,
-        text=True,
+        attempts=attempts,
     )
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if lines:
@@ -84,25 +239,28 @@ def resolve_playlist_name(ytdlp: str, url: str) -> str:
     return sanitize_dir_name(playlist_url_id(url) or "playlist")
 
 
-def playlist_reachable(ytdlp: str, url: str) -> bool:
+def playlist_reachable(
+    ytdlp: str, url: str, attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> bool:
     """Check that the playlist itself loads. Individual unavailable tracks do
     not affect this; a deleted/private/invalid playlist returns non-zero."""
-    result = subprocess.run(
+    result = run_capture(
         [ytdlp, "--flat-playlist", "--ignore-errors", "--print", "%(id)s", url],
-        capture_output=True,
-        text=True,
+        attempts=attempts,
     )
     return result.returncode == 0
 
 
-def resolve_playlists(ytdlp: str, config: dict[str, Any]) -> list[tuple[str, str]]:
+def resolve_playlists(
+    ytdlp: str, config: dict[str, Any], attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> list[tuple[str, str]]:
     """Resolve each playlist to a unique (directory_name, url) pair."""
     resolved: list[tuple[str, str]] = []
     used: set[str] = set()
 
     for playlist in get_playlists(config):
         url = playlist["url"]
-        name = playlist.get("name") or resolve_playlist_name(ytdlp, url)
+        name = playlist.get("name") or resolve_playlist_name(ytdlp, url, attempts)
         name = sanitize_dir_name(name)
 
         if name in used:
@@ -123,7 +281,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    config = load_config()
+    try:
+        config = load_config()
+        validate_config(config)
+    except FileNotFoundError:
+        print(f"Config not found: {CONFIG_PATH}", file=sys.stderr)
+        return 2
+    except ConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    retries = get_retries(config)
 
     output_dir = Path(config["output_dir"]).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +310,7 @@ def main() -> int:
     )
 
     ytdlp = str(Path(config["ytdlp_path"]).expanduser())
-    playlists = resolve_playlists(ytdlp, config)
+    playlists = resolve_playlists(ytdlp, config, retries)
 
     if args.dry_run:
         for name, url in playlists:
@@ -185,7 +353,7 @@ def main() -> int:
 
         # A reachable playlist may still contain unavailable tracks, which makes
         # yt-dlp exit non-zero. Only a playlist that cannot load at all is fatal.
-        if not playlist_reachable(ytdlp, url):
+        if not playlist_reachable(ytdlp, url, retries):
             failed.append(url)
             logging.error(f"Playlist could not be loaded: {url}")
             continue
@@ -196,7 +364,7 @@ def main() -> int:
             url,
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = run_download(cmd, retries)
 
         downloaded = 0
         for line in result.stdout.strip().splitlines():
@@ -229,6 +397,7 @@ def main() -> int:
                     f"Check {log_path} for details."
                 ),
                 priority="high",
+                attempts=retries,
             )
         except Exception as exc:
             logging.error(f"Failed to send ntfy notification: {exc}")

@@ -78,14 +78,18 @@ All configuration lives in `config.toml` (gitignored — each machine has its ow
 | `playlist_urls` | Optional alternative to `playlists`. A list of URLs; directory names are derived from the playlist titles. |
 | `playlist_url` | Optional legacy single URL. Still supported for backward compatibility. |
 | `cookies_from_browser` | Optional. Read cookies from a browser to reach age-restricted or members-only tracks (e.g. `"chrome"`, `"firefox"`, or `"browser:profile"`). |
+| `retries` | Optional. Number of attempts for network operations (metadata fetches, downloads, notifications) before giving up. Default `3`. |
 | `backup_dir` | Optional. Where the [migration script](#migrating-existing-downloads) stores its backup. Defaults to a sibling directory named `<output_dir>-backup`. |
 | `ntfy_topic` | Your [ntfy.sh](https://ntfy.sh) topic name for failure notifications. Pick something unique and keep it private. |
+
+> **TOML ordering:** keep all top-level keys (`ytdlp_path`, `output_dir`, `ntfy_topic`, …) **above** the first `[[playlists]]` table. In TOML, any key that follows a `[[playlists]]` header belongs to that playlist, not the document root.
 
 Example `config.toml`:
 
 ```toml
 ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 output_dir = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
+ntfy_topic = "your-unique-topic-name"
 
 [[playlists]]
 name = "dj"
@@ -94,8 +98,6 @@ url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
 [[playlists]]
 name = "nov14"
 url = "https://music.youtube.com/playlist?list=YOURPLAYLISTID"
-
-ntfy_topic = "your-unique-topic-name"
 ```
 
 If `name` is omitted (or when using `playlist_urls`), the directory name is derived from the playlist title. If the title is empty or invalid, the playlist ID is used. If two playlists resolve to the same name, the playlist ID is appended to disambiguate.

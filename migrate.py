@@ -29,10 +29,103 @@ CONFIG_PATH = Path(__file__).parent / "config.toml"
 MEDIA_EXTS = {".flac", ".mp3", ".webm", ".m4a", ".opus", ".wav", ".ogg", ".aac"}
 SKIP_NAMES = {"log.txt", "archive.txt", ".DS_Store"}
 
+RETRY_ATTEMPTS_DEFAULT = 3
+
+
+class ConfigError(Exception):
+    """Raised when config.toml is missing required or well-typed values."""
+
 
 def load_config() -> dict[str, Any]:
     with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
+
+
+def get_retries(config: dict[str, Any]) -> int:
+    value = config.get("retries", RETRY_ATTEMPTS_DEFAULT)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return RETRY_ATTEMPTS_DEFAULT
+    return value
+
+
+def validate_config(config: dict[str, Any]) -> None:
+    """Raise :class:`ConfigError` listing every problem found in the config."""
+    errors: list[str] = []
+
+    for key in ("ytdlp_path", "output_dir"):
+        value = config.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{key!r} must be a non-empty string")
+
+    ytdlp_path = config.get("ytdlp_path")
+    if isinstance(ytdlp_path, str) and ("/" in ytdlp_path or ytdlp_path.startswith("~")):
+        if not Path(ytdlp_path).expanduser().exists():
+            errors.append(f"'ytdlp_path' not found: {ytdlp_path}")
+
+    playlists = config.get("playlists")
+    playlist_urls = config.get("playlist_urls")
+    playlist_url = config.get("playlist_url")
+
+    if playlists is not None:
+        if not isinstance(playlists, list) or not playlists:
+            errors.append("'playlists' must be a non-empty list of tables")
+        else:
+            for index, entry in enumerate(playlists):
+                if not isinstance(entry, dict):
+                    errors.append(f"'playlists[{index}]' must be a table with a 'url'")
+                    continue
+                if not isinstance(entry.get("url"), str) or not entry["url"].strip():
+                    errors.append(f"'playlists[{index}].url' must be a non-empty string")
+                if "name" in entry and not isinstance(entry["name"], str):
+                    errors.append(f"'playlists[{index}].name' must be a string")
+    elif playlist_urls is not None:
+        if not isinstance(playlist_urls, list) or not playlist_urls:
+            errors.append("'playlist_urls' must be a non-empty list of URLs")
+        else:
+            for index, url in enumerate(playlist_urls):
+                if not isinstance(url, str) or not url.strip():
+                    errors.append(f"'playlist_urls[{index}]' must be a non-empty string")
+    elif playlist_url is not None:
+        if not isinstance(playlist_url, str) or not playlist_url.strip():
+            errors.append("'playlist_url' must be a non-empty string")
+    else:
+        errors.append(
+            "no playlists configured: set 'playlists', 'playlist_urls', or 'playlist_url'"
+        )
+
+    backup_dir = config.get("backup_dir")
+    if backup_dir is not None and not isinstance(backup_dir, str):
+        errors.append("'backup_dir' must be a string")
+
+    retries = config.get("retries", RETRY_ATTEMPTS_DEFAULT)
+    if isinstance(retries, bool) or not isinstance(retries, int) or retries < 1:
+        errors.append("'retries' must be a positive integer")
+
+    if errors:
+        raise ConfigError("Invalid config.toml:\n  - " + "\n  - ".join(errors))
+
+
+def run_capture(
+    cmd: list[str],
+    attempts: int = RETRY_ATTEMPTS_DEFAULT,
+    delay: float = 2.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command, retrying on a non-zero exit with linear backoff."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    for attempt in range(1, attempts):
+        if result.returncode == 0:
+            return result
+        logging.warning(
+            "command failed (exit %s); retry %s/%s in %.0fs",
+            result.returncode,
+            attempt,
+            attempts - 1,
+            delay,
+        )
+        time.sleep(delay)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
 
 
 def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
@@ -60,8 +153,10 @@ def playlist_url_id(url: str) -> str:
     return ids[0] if ids else ""
 
 
-def resolve_playlist_name(ytdlp: str, url: str) -> str:
-    result = subprocess.run(
+def resolve_playlist_name(
+    ytdlp: str, url: str, attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> str:
+    result = run_capture(
         [
             ytdlp,
             "--flat-playlist",
@@ -69,8 +164,7 @@ def resolve_playlist_name(ytdlp: str, url: str) -> str:
             "--print", "%(playlist_title)s",
             url,
         ],
-        capture_output=True,
-        text=True,
+        attempts=attempts,
     )
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if lines:
@@ -78,11 +172,12 @@ def resolve_playlist_name(ytdlp: str, url: str) -> str:
     return sanitize_dir_name(playlist_url_id(url) or "playlist")
 
 
-def playlist_ids(ytdlp: str, url: str) -> set[str]:
-    result = subprocess.run(
+def playlist_ids(
+    ytdlp: str, url: str, attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> set[str]:
+    result = run_capture(
         [ytdlp, "--flat-playlist", "--ignore-errors", "--print", "%(id)s", url],
-        capture_output=True,
-        text=True,
+        attempts=attempts,
     )
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
@@ -113,13 +208,15 @@ def video_id_from_file(path: Path) -> str | None:
     return ids[0] if ids else None
 
 
-def resolve_playlists(ytdlp: str, config: dict[str, Any]) -> list[tuple[str, str]]:
+def resolve_playlists(
+    ytdlp: str, config: dict[str, Any], attempts: int = RETRY_ATTEMPTS_DEFAULT
+) -> list[tuple[str, str]]:
     resolved: list[tuple[str, str]] = []
     used: set[str] = set()
 
     for playlist in get_playlists(config):
         url = playlist["url"]
-        name = playlist.get("name") or resolve_playlist_name(ytdlp, url)
+        name = playlist.get("name") or resolve_playlist_name(ytdlp, url, attempts)
         name = sanitize_dir_name(name)
 
         if name in used:
@@ -176,7 +273,18 @@ def main() -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
-    config = load_config()
+    try:
+        config = load_config()
+        validate_config(config)
+    except FileNotFoundError:
+        print(f"Config not found: {CONFIG_PATH}", file=sys.stderr)
+        return 2
+    except ConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    retries = get_retries(config)
+
     output_dir = Path(config["output_dir"]).expanduser()
     if not output_dir.is_dir():
         print(f"output_dir not found: {output_dir}", file=sys.stderr)
@@ -187,12 +295,12 @@ def main() -> int:
         config.get("backup_dir", output_dir.parent / f"{output_dir.name}-backup")
     ).expanduser()
 
-    playlists = resolve_playlists(ytdlp, config)
+    playlists = resolve_playlists(ytdlp, config, retries)
 
     # Map video id -> playlist directory name. First playlist wins.
     playlist_by_id: dict[str, str] = {}
     for name, url in playlists:
-        for video_id in playlist_ids(ytdlp, url):
+        for video_id in playlist_ids(ytdlp, url, retries):
             playlist_by_id.setdefault(video_id, name)
 
     duplicates = dedupe_plan(output_dir)

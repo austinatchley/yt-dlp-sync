@@ -24,21 +24,23 @@ Long-term context for agents working in this repository. Keep this file up to da
 - Playlist directory names come from an explicit `name`, or from the playlist title when only a URL is configured.
 - Directory names are sanitized for filesystem safety. Collisions are disambiguated by appending the playlist ID.
 - A playlist that cannot be loaded at all is fatal: the run exits non-zero and sends an ntfy notification. Unavailable/private/age-gated individual tracks are skipped and logged without failing the run.
+- Config is validated up front (`validate_config`): every missing/mistyped key is reported together and the run exits with code 2 instead of raising `KeyError`.
+- Network operations retry with linear backoff (`retries` config key, default 3). Downloads only retry when the error looks transient; permanent per-video errors are not retried.
 
 ### Config shapes (all supported)
 
 ```toml
-# Preferred: explicit names
+# Preferred: explicit names. Top-level keys must come *before* this table.
 [[playlists]]
 name = "dj"
 url = "https://music.youtube.com/playlist?list=..."
 
-# URLs only; names derived from playlist titles
-playlist_urls = ["https://music.youtube.com/playlist?list=..."]
-
-# Legacy single URL
-playlist_url = "https://music.youtube.com/playlist?list=..."
+# Alternatives (also must precede the [[playlists]] table):
+playlist_urls = ["https://music.youtube.com/playlist?list=..."]  # names from titles
+playlist_url = "https://music.youtube.com/playlist?list=..."     # legacy single
 ```
+
+> In TOML, keys that follow a `[[playlists]]` header belong to that playlist, not the document root. Put `ytdlp_path`, `output_dir`, `ntfy_topic`, etc. above the first `[[playlists]]`.
 
 ## Commands
 
@@ -61,6 +63,7 @@ python3 -m py_compile sync.py migrate.py
 | `playlist_urls` | Optional list of URLs; names derived from titles. |
 | `playlist_url` | Optional legacy single URL. |
 | `cookies_from_browser` | Optional browser name/profile for cookies. |
+| `retries` | Optional. Attempts for network operations (default `3`). |
 | `backup_dir` | Optional backup directory for `migrate.py`. |
 | `ntfy_topic` | ntfy.sh topic for failure notifications. |
 
