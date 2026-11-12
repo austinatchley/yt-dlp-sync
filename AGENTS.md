@@ -13,7 +13,7 @@ Long-term context for agents working in this repository. Keep this file up to da
 | `sync.py` | Main sync script. Resolves playlists, runs `yt-dlp` per playlist, logs, and reports failures via exit code. |
 | `migrate.py` | One-off migration script: backup, deduplicate, and move an old flat output directory into the per-playlist layout. |
 | `config.example.toml` | Example config. Copy to `config.toml` (gitignored). |
-| `tests/` | Standard-library `unittest` suite. Run with `python3 -m unittest discover -s tests`. |
+| `tests/` | `unittest` suite: pure-logic unit tests plus integration tests that drive `sync.py`/`migrate.py` against stub `yt-dlp`/`ffprobe` executables. Run with `python3 -m unittest discover -s tests`. |
 | `.github/workflows/ci.yml` | CI: compile check + test suite on Python 3.11–3.13. |
 | `README.md` | User-facing documentation. |
 | `AGENTS.md` | This file. |
@@ -52,6 +52,7 @@ python3 sync.py              # run the sync
 python3 sync.py --dry-run    # print resolved playlists and exit
 python3 sync.py --only dj    # sync only the named playlist(s)
 python3 sync.py --status     # offline: files vs archive counts
+python3 sync.py --config PATH  # use an alternate config file (sync.py and migrate.py)
 python3 migrate.py           # preview the migration plan (dry run)
 python3 migrate.py --apply   # back up, dedupe, and move files
 python3 migrate.py --apply --skip-backup   # skip the slow full-copy backup

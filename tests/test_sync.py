@@ -200,5 +200,20 @@ class PlaylistStatsTests(unittest.TestCase):
             self.assertEqual(sync.playlist_stats(Path(tmp) / "nope"), (0, 0))
 
 
+class StreamDownloadTests(unittest.TestCase):
+    def test_counts_downloads_and_captures_stderr(self):
+        returncode, downloaded, errors = sync._stream_download(
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('Downloaded: x'); "
+                "print('boom', file=sys.stderr); sys.exit(1)",
+            ]
+        )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(downloaded, 1)
+        self.assertEqual(errors, ["boom"])
+
+
 if __name__ == "__main__":
     unittest.main()

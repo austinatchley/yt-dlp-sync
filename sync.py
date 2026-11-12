@@ -51,8 +51,8 @@ class ConfigError(Exception):
     """Raised when config.toml is missing required or well-typed values."""
 
 
-def load_config() -> dict[str, Any]:
-    with open(CONFIG_PATH, "rb") as f:
+def load_config(path: Path | None = None) -> dict[str, Any]:
+    with open(path or CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
 
@@ -198,6 +198,11 @@ def _stream_download(cmd: list[str]) -> tuple[int, int, list[str]]:
         thread.start()
     for thread in threads:
         thread.join()
+
+    if proc.stdout is not None:
+        proc.stdout.close()
+    if proc.stderr is not None:
+        proc.stderr.close()
 
     return proc.wait(), downloaded, errors
 
@@ -359,6 +364,13 @@ def playlist_stats(playlist_dir: Path) -> tuple[int, int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync YouTube playlists to FLAC.")
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Path to config.toml (default: next to this script).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print resolved playlists and exit without downloading.",
@@ -376,11 +388,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    config_path = args.config or CONFIG_PATH
     try:
-        config = load_config()
+        config = load_config(config_path)
         validate_config(config)
     except FileNotFoundError:
-        print(f"Config not found: {CONFIG_PATH}", file=sys.stderr)
+        print(f"Config not found: {config_path}", file=sys.stderr)
         return 2
     except ConfigError as exc:
         print(str(exc), file=sys.stderr)
