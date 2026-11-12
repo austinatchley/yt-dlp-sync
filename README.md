@@ -1,6 +1,6 @@
 # yt-dlp-sync
 
-A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for automatically syncing one or more YouTube or YouTube Music playlists to a local machine as FLAC audio files. Designed to run on a schedule (e.g., via cron), it downloads only new tracks on each run, embeds album art and metadata, and sends a push notification via [ntfy.sh](https://ntfy.sh) if anything goes wrong. Intended for use on macOS and Windows Subsystem for Linux (WSL).
+A lightweight Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for automatically syncing one or more YouTube or YouTube Music playlists to a local machine as FLAC audio files. Designed to run on a schedule (e.g., via cron), it downloads only new tracks on each run, embeds album art and metadata, and exits non-zero (so your scheduler can alert you) if a playlist fails to load. Intended for use on macOS and Windows Subsystem for Linux (WSL).
 
 ---
 
@@ -13,7 +13,7 @@ On each run, `sync.py`:
 3. Uses 4 parallel download workers for speed
 4. Skips unavailable, private, or age-gated tracks without aborting the rest of the playlist
 5. Logs all activity to a rotating log file and stdout
-6. Sends a high-priority [ntfy.sh](https://ntfy.sh) push notification if a playlist sync fails outright
+6. Exits non-zero if a playlist fails to load, so your scheduler can alert you
 
 Each playlist is downloaded into its own subdirectory of `output_dir` and keeps its own `archive.txt`, so playlists stay isolated and can be added or removed independently. The output directory is designed to live on a shared cloud drive (e.g., Google Drive) so multiple machines share the same state and never duplicate downloads.
 
@@ -78,18 +78,16 @@ All configuration lives in `config.toml` (gitignored — each machine has its ow
 | `playlist_urls` | Optional alternative to `playlists`. A list of URLs; directory names are derived from the playlist titles. |
 | `playlist_url` | Optional legacy single URL. Still supported for backward compatibility. |
 | `cookies_from_browser` | Optional. Read cookies from a browser to reach age-restricted or members-only tracks (e.g. `"chrome"`, `"firefox"`, or `"browser:profile"`). |
-| `retries` | Optional. Number of attempts for network operations (metadata fetches, downloads, notifications) before giving up. Default `3`. |
+| `retries` | Optional. Number of attempts for network operations (metadata fetches and downloads) before giving up. Default `3`. |
 | `backup_dir` | Optional. Where the [migration script](#migrating-existing-downloads) stores its backup. Defaults to a sibling directory named `<output_dir>-backup`. |
-| `ntfy_topic` | Your [ntfy.sh](https://ntfy.sh) topic name for failure notifications. Pick something unique and keep it private. |
 
-> **TOML ordering:** keep all top-level keys (`ytdlp_path`, `output_dir`, `ntfy_topic`, …) **above** the first `[[playlists]]` table. In TOML, any key that follows a `[[playlists]]` header belongs to that playlist, not the document root.
+> **TOML ordering:** keep all top-level keys (`ytdlp_path`, `output_dir`, `retries`, …) **above** the first `[[playlists]]` table. In TOML, any key that follows a `[[playlists]]` header belongs to that playlist, not the document root.
 
 Example `config.toml`:
 
 ```toml
 ytdlp_path = "~/dev/yt-dlp/yt-dlp.sh"
 output_dir = "~/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/Music"
-ntfy_topic = "your-unique-topic-name"
 
 [[playlists]]
 name = "dj"
@@ -309,15 +307,11 @@ Create a task that calls the WSL binary directly so it runs on a Windows schedul
 
 ---
 
-## Notifications
+## Exit codes and scheduling
 
-Unavailable, private, and age-gated tracks are skipped and logged; they do not fail the run. When a playlist itself cannot be loaded (deleted, private, or invalid URL), `sync.py` sends a high-priority push notification to your [ntfy.sh](https://ntfy.sh) topic with a pointer to the log file.
+Unavailable, private, and age-gated tracks are skipped and logged; they do not fail the run. When a playlist itself cannot be loaded (deleted, private, or invalid URL), `sync.py` logs the failure and exits with a non-zero status.
 
-To receive notifications, subscribe to your topic:
-- **Web:** `https://ntfy.sh/<your-topic>`
-- **Mobile:** Download the [ntfy app](https://ntfy.sh/) and subscribe to your topic name
-
-The notification is sent over plain HTTPS using Python's standard library (`urllib.request`) — no extra dependencies required.
+Use your scheduler to surface failures — for example, cron emails stdout/stderr from the job, and launchd/Windows Task Scheduler can run a follow-up action. The script keeps no network notification dependency; all output goes to stdout and `log.txt`.
 
 ---
 

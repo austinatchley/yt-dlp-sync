@@ -4,13 +4,13 @@ Long-term context for agents working in this repository. Keep this file up to da
 
 ## Project overview
 
-`yt-dlp-sync` is a small, dependency-free Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp). It syncs one or more YouTube / YouTube Music playlists to local FLAC files on a schedule (cron, launchd, or Windows Task Scheduler) and sends an [ntfy.sh](https://ntfy.sh) push notification when a playlist cannot be loaded.
+`yt-dlp-sync` is a small, dependency-free Python wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp). It syncs one or more YouTube / YouTube Music playlists to local FLAC files on a schedule (cron, launchd, or Windows Task Scheduler) and exits non-zero when a playlist cannot be loaded.
 
 ## Repository layout
 
 | Path | Purpose |
 |---|---|
-| `sync.py` | Main sync script. Resolves playlists, runs `yt-dlp` per playlist, logs, and notifies. |
+| `sync.py` | Main sync script. Resolves playlists, runs `yt-dlp` per playlist, logs, and reports failures via exit code. |
 | `migrate.py` | One-off migration script: backup, deduplicate, and move an old flat output directory into the per-playlist layout. |
 | `config.example.toml` | Example config. Copy to `config.toml` (gitignored). |
 | `README.md` | User-facing documentation. |
@@ -23,7 +23,7 @@ Long-term context for agents working in this repository. Keep this file up to da
 - The global run log stays at `output_dir/log.txt`.
 - Playlist directory names come from an explicit `name`, or from the playlist title when only a URL is configured.
 - Directory names are sanitized for filesystem safety. Collisions are disambiguated by appending the playlist ID.
-- A playlist that cannot be loaded at all is fatal: the run exits non-zero and sends an ntfy notification. Unavailable/private/age-gated individual tracks are skipped and logged without failing the run.
+- A playlist that cannot be loaded at all is fatal: the run exits non-zero. Unavailable/private/age-gated individual tracks are skipped and logged without failing the run.
 - Config is validated up front (`validate_config`): every missing/mistyped key is reported together and the run exits with code 2 instead of raising `KeyError`.
 - Network operations retry with linear backoff (`retries` config key, default 3). Downloads only retry when the error looks transient; permanent per-video errors are not retried.
 
@@ -40,7 +40,7 @@ playlist_urls = ["https://music.youtube.com/playlist?list=..."]  # names from ti
 playlist_url = "https://music.youtube.com/playlist?list=..."     # legacy single
 ```
 
-> In TOML, keys that follow a `[[playlists]]` header belong to that playlist, not the document root. Put `ytdlp_path`, `output_dir`, `ntfy_topic`, etc. above the first `[[playlists]]`.
+> In TOML, keys that follow a `[[playlists]]` header belong to that playlist, not the document root. Put `ytdlp_path`, `output_dir`, `retries`, etc. above the first `[[playlists]]`.
 
 ## Commands
 
@@ -65,7 +65,6 @@ python3 -m py_compile sync.py migrate.py
 | `cookies_from_browser` | Optional browser name/profile for cookies. |
 | `retries` | Optional. Attempts for network operations (default `3`). |
 | `backup_dir` | Optional backup directory for `migrate.py`. |
-| `ntfy_topic` | ntfy.sh topic for failure notifications. |
 
 ## Migration notes
 

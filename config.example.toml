@@ -24,10 +24,6 @@ output_dir = "~/path/to/output"
 # Defaults to a sibling directory named "<output_dir>-backup".
 # backup_dir = "~/path/to/backup"
 
-# ntfy.sh topic — pick something unique and keep it private
-# Subscribe at https://ntfy.sh/<your-topic> or via the ntfy app
-ntfy_topic = "your-unique-topic-name"
-
 # Alternative to [[playlists]]: a plain list of URLs, with directory names
 # derived from the playlist titles. Also keep this above the table below.
 # playlist_urls = ["https://music.youtube.com/playlist?list=YOURPLAYLISTID"]

@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +48,7 @@ def get_retries(config: dict[str, Any]) -> int:
     return value
 
 
-def validate_config(config: dict[str, Any], *, needs_ntfy: bool = True) -> None:
+def validate_config(config: dict[str, Any]) -> None:
     """Raise :class:`ConfigError` listing every problem found in the config."""
     errors: list[str] = []
 
@@ -57,11 +56,6 @@ def validate_config(config: dict[str, Any], *, needs_ntfy: bool = True) -> None:
         value = config.get(key)
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{key!r} must be a non-empty string")
-
-    if needs_ntfy:
-        value = config.get("ntfy_topic")
-        if not isinstance(value, str) or not value.strip():
-            errors.append("'ntfy_topic' must be a non-empty string")
 
     ytdlp_path = config.get("ytdlp_path")
     if isinstance(ytdlp_path, str) and ("/" in ytdlp_path or ytdlp_path.startswith("~")):
@@ -157,31 +151,6 @@ def run_download(
         time.sleep(delay)
         result = subprocess.run(cmd, capture_output=True, text=True)
     return result
-
-
-def send_ntfy(
-    topic: str,
-    title: str,
-    message: str,
-    priority: str = "default",
-    attempts: int = RETRY_ATTEMPTS_DEFAULT,
-) -> None:
-    req = urllib.request.Request(
-        f"https://ntfy.sh/{topic}",
-        data=message.encode(),
-        method="POST",
-        headers={"Title": title, "Priority": priority},
-    )
-    for attempt in range(1, attempts + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=10) as response:
-                response.read()
-            return
-        except Exception:
-            if attempt == attempts:
-                raise
-            time.sleep(2 * attempt)
-
 
 
 def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
@@ -388,19 +357,10 @@ def main() -> int:
             )
 
     if failed:
-        try:
-            send_ntfy(
-                config["ntfy_topic"],
-                title="yt-dlp-sync failed",
-                message=(
-                    f"{len(failed)} playlist(s) failed: {', '.join(failed)}. "
-                    f"Check {log_path} for details."
-                ),
-                priority="high",
-                attempts=retries,
-            )
-        except Exception as exc:
-            logging.error(f"Failed to send ntfy notification: {exc}")
+        logging.error(
+            f"{len(failed)} playlist(s) failed: {', '.join(failed)}. "
+            f"See {log_path} for details."
+        )
 
     logging.info(f"=== sync finished ({len(failed)} failed) ===")
     return 1 if failed else 0
