@@ -31,6 +31,18 @@ SKIP_NAMES = {"log.txt", "archive.txt", ".DS_Store"}
 
 RETRY_ATTEMPTS_DEFAULT = 3
 
+KNOWN_CONFIG_KEYS = {
+    "ytdlp_path",
+    "output_dir",
+    "playlists",
+    "playlist_urls",
+    "playlist_url",
+    "cookies_from_browser",
+    "retries",
+    "backup_dir",
+}
+KNOWN_PLAYLIST_KEYS = {"name", "url"}
+
 
 class ConfigError(Exception):
     """Raised when config.toml is missing required or well-typed values."""
@@ -100,6 +112,16 @@ def validate_config(config: dict[str, Any]) -> None:
     retries = config.get("retries", RETRY_ATTEMPTS_DEFAULT)
     if isinstance(retries, bool) or not isinstance(retries, int) or retries < 1:
         errors.append("'retries' must be a positive integer")
+
+    for key in sorted(set(config) - KNOWN_CONFIG_KEYS):
+        errors.append(f"unknown top-level key {key!r}")
+
+    if isinstance(playlists, list):
+        for index, entry in enumerate(playlists):
+            if not isinstance(entry, dict):
+                continue
+            for key in sorted(set(entry) - KNOWN_PLAYLIST_KEYS):
+                errors.append(f"unknown key 'playlists[{index}].{key}'")
 
     if errors:
         raise ConfigError("Invalid config.toml:\n  - " + "\n  - ".join(errors))

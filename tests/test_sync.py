@@ -106,6 +106,29 @@ class ValidateConfigTests(unittest.TestCase):
                 }
             )
 
+    def test_unknown_top_level_key(self):
+        with self.assertRaises(sync.ConfigError) as ctx:
+            sync.validate_config(
+                {
+                    "ytdlp_path": "/bin/ls",
+                    "output_dir": "~/x",
+                    "playlist_url": "u",
+                    "not_a_key": 1,
+                }
+            )
+        self.assertIn("unknown top-level key 'not_a_key'", str(ctx.exception))
+
+    def test_unknown_playlist_key(self):
+        with self.assertRaises(sync.ConfigError) as ctx:
+            sync.validate_config(
+                {
+                    "ytdlp_path": "/bin/ls",
+                    "output_dir": "~/x",
+                    "playlists": [{"name": "dj", "url": "u", "ntfy_topic": "x"}],
+                }
+            )
+        self.assertIn("unknown key 'playlists[0].ntfy_topic'", str(ctx.exception))
+
 
 class RetryHelperTests(unittest.TestCase):
     def test_get_retries_default_and_override(self):

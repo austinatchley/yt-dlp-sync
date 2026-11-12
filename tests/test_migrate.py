@@ -83,6 +83,20 @@ class ValidateConfigTests(unittest.TestCase):
                 {"playlist_urls": "nope", "backup_dir": 5, "retries": -1}
             )
 
+    def test_unknown_keys(self):
+        with self.assertRaises(migrate.ConfigError) as ctx:
+            migrate.validate_config(
+                {
+                    "ytdlp_path": "/bin/ls",
+                    "output_dir": "~/x",
+                    "playlists": [{"url": "u", "oops": 1}],
+                    "extra": 2,
+                }
+            )
+        message = str(ctx.exception)
+        self.assertIn("unknown top-level key 'extra'", message)
+        self.assertIn("unknown key 'playlists[0].oops'", message)
+
 
 if __name__ == "__main__":
     unittest.main()

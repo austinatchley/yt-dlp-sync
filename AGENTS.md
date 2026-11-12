@@ -27,7 +27,7 @@ Long-term context for agents working in this repository. Keep this file up to da
 - Directory names are sanitized for filesystem safety. Collisions are disambiguated by appending the playlist ID.
 - A playlist that cannot be loaded at all is fatal: the run exits non-zero. Unavailable/private/age-gated individual tracks are skipped and logged without failing the run.
 - yt-dlp output is streamed live (stdout/stderr read on worker threads) and logged immediately, so long runs show progress instead of staying silent.
-- Config is validated up front (`validate_config`): every missing/mistyped key is reported together and the run exits with code 2 instead of raising `KeyError`.
+- Config is validated up front (`validate_config`): every missing, mistyped, or unknown key is reported together and the run exits with code 2 instead of raising `KeyError`.
 - Network operations retry with linear backoff (`retries` config key, default 3). Downloads only retry when the error looks transient; permanent per-video errors are not retried.
 
 ### Config shapes (all supported)
