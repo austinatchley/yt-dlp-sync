@@ -5,6 +5,7 @@ import logging.handlers
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from pathlib import Path
@@ -132,16 +133,61 @@ def looks_transient(stderr: str) -> bool:
     return any(marker in lowered for marker in TRANSIENT_ERROR_MARKERS)
 
 
+def _stream_download(cmd: list[str]) -> tuple[int, int, list[str]]:
+    """Run yt-dlp, logging its output live.
+
+    Returns ``(returncode, downloaded, error_lines)``. stdout and stderr are read
+    on separate threads so the pipes cannot deadlock.
+    """
+    downloaded = 0
+    errors: list[str] = []
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    def read_stdout() -> None:
+        nonlocal downloaded
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            logging.info(line)
+            if line.startswith("Downloaded:"):
+                downloaded += 1
+
+    def read_stderr() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            line = line.rstrip("\n")
+            errors.append(line)
+            logging.error(line)
+
+    threads = [
+        threading.Thread(target=read_stdout),
+        threading.Thread(target=read_stderr),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    return proc.wait(), downloaded, errors
+
+
 def run_download(
     cmd: list[str],
     attempts: int = RETRY_ATTEMPTS_DEFAULT,
     delay: float = 5.0,
-) -> subprocess.CompletedProcess[str]:
-    """Run a yt-dlp download, retrying only transient (network) failures."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
+) -> tuple[int, int, list[str]]:
+    """Run a yt-dlp download, streaming output and retrying transient failures."""
+    returncode, downloaded, errors = _stream_download(cmd)
     for attempt in range(1, attempts):
-        if result.returncode == 0 or not looks_transient(result.stderr):
-            return result
+        if returncode == 0 or not looks_transient("\n".join(errors)):
+            return returncode, downloaded, errors
         logging.warning(
             "yt-dlp failed with a transient error; retry %s/%s in %.0fs",
             attempt,
@@ -149,8 +195,8 @@ def run_download(
             delay,
         )
         time.sleep(delay)
-        result = subprocess.run(cmd, capture_output=True, text=True)
-    return result
+        returncode, downloaded, errors = _stream_download(cmd)
+    return returncode, downloaded, errors
 
 
 def get_playlists(config: dict[str, Any]) -> list[dict[str, str | None]]:
@@ -333,26 +379,16 @@ def main() -> int:
             url,
         ]
 
-        result = run_download(cmd, retries)
-
-        downloaded = 0
-        for line in result.stdout.strip().splitlines():
-            logging.info(line)
-            if line.startswith("Downloaded:"):
-                downloaded += 1
-
-        error_lines = result.stderr.strip().splitlines()
-        for line in error_lines:
-            logging.error(line)
+        returncode, downloaded, error_lines = run_download(cmd, retries)
 
         logging.info(
             f"=== finished {name} "
             f"({downloaded} new track(s), {len(error_lines)} error line(s)) ==="
         )
 
-        if result.returncode != 0:
+        if returncode != 0:
             logging.warning(
-                f"yt-dlp exited with code {result.returncode} for {name}; "
+                f"yt-dlp exited with code {returncode} for {name}; "
                 "some tracks may be unavailable (see errors above)"
             )
 

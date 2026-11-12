@@ -12,7 +12,7 @@ On each run, `sync.py`:
 2. Extracts audio, converts to **FLAC**, embeds a thumbnail as JPG album art, and writes metadata tags
 3. Downloads up to 4 fragments concurrently per track for speed
 4. Skips unavailable, private, or age-gated tracks without aborting the rest of the playlist
-5. Logs all activity to a rotating log file and stdout
+5. Logs all activity live to a rotating log file and stdout
 6. Exits non-zero if a playlist fails to load, so your scheduler can alert you
 
 Each playlist is downloaded into its own subdirectory of `output_dir` and keeps its own `archive.txt`, so playlists stay isolated and can be added or removed independently. The output directory is designed to live on a shared cloud drive (e.g., Google Drive) so multiple machines share the same state and never duplicate downloads.
