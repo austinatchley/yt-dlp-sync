@@ -44,6 +44,8 @@ KNOWN_CONFIG_KEYS = {
 }
 KNOWN_PLAYLIST_KEYS = {"name", "url"}
 
+AUDIO_EXTS = {".flac", ".mp3", ".m4a", ".opus", ".ogg", ".wav", ".webm"}
+
 
 class ConfigError(Exception):
     """Raised when config.toml is missing required or well-typed values."""
@@ -332,6 +334,28 @@ def select_playlists(
     return selected, missing
 
 
+def playlist_stats(playlist_dir: Path) -> tuple[int, int]:
+    """Return (audio file count, archive entry count) for a playlist directory."""
+    files = 0
+    if playlist_dir.is_dir():
+        files = sum(
+            1
+            for path in playlist_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in AUDIO_EXTS
+        )
+
+    archived = 0
+    archive = playlist_dir / "archive.txt"
+    if archive.exists():
+        archived = sum(
+            1
+            for line in archive.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+    return files, archived
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync YouTube playlists to FLAC.")
     parser.add_argument(
@@ -344,6 +368,11 @@ def main() -> int:
         action="append",
         metavar="NAME",
         help="Sync only the named playlist(s). May be repeated.",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show per-playlist file/archive counts and exit (offline).",
     )
     args = parser.parse_args()
 
@@ -386,6 +415,13 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.status:
+        print(f"{'playlist':<16}{'files':>7}{'archive':>9}")
+        for name, _url in playlists:
+            files, archived = playlist_stats(output_dir / name)
+            print(f"{name:<16}{files:>7}{archived:>9}")
+        return 0
 
     if args.dry_run:
         for name, url in playlists:

@@ -73,7 +73,10 @@ python3 sync.py                        # sync every configured playlist
 python3 sync.py --dry-run              # print resolved playlists and exit
 python3 sync.py --only dj              # sync only the "dj" playlist
 python3 sync.py --only dj --only nov14 # sync several
+python3 sync.py --status               # offline: files vs archive per playlist
 ```
+
+`--status` prints the number of local audio files and the number of archive entries for each playlist, without touching the network — handy for spotting drift between what's on disk and what yt-dlp considers downloaded.
 
 `--only` takes the resolved playlist names (the directory names shown by `--dry-run`) and may be repeated. An unknown name prints the available names.
 

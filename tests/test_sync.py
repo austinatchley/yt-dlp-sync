@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -181,6 +182,22 @@ class PlaylistTrackCountTests(unittest.TestCase):
             sync, "run_capture", return_value=completed("", returncode=1)
         ):
             self.assertEqual(sync.playlist_track_count("/x", "u"), -1)
+
+
+class PlaylistStatsTests(unittest.TestCase):
+    def test_counts_files_and_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.flac").write_text("")
+            (root / "b.mp3").write_text("")
+            (root / "notes.txt").write_text("")
+            (root / "archive.txt").write_text("youtube a\n\nyoutube b\n")
+            files, archived = sync.playlist_stats(root)
+        self.assertEqual((files, archived), (2, 2))
+
+    def test_missing_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(sync.playlist_stats(Path(tmp) / "nope"), (0, 0))
 
 
 if __name__ == "__main__":
